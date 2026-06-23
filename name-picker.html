@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Name Picker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #0d0d14;
+    --surface: #16161f;
+    --card: #1e1e2e;
+    --border: #2a2a3f;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --gold: #f59e0b;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --win: #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 3rem;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 400px;
+    background: radial-gradient(ellipse, rgba(124,58,237,0.13) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(1.4rem, 4vw, 2.2rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-align: center;
+    margin-bottom: 0.25rem;
+    position: relative;
+    z-index: 1;
+  }
+  h1 span { color: var(--accent2); }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    text-align: center;
+    margin-bottom: 2rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Upload */
+  .upload-zone {
+    width: 100%;
+    max-width: 520px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--surface);
+    position: relative;
+    z-index: 1;
+    margin-bottom: 1.5rem;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,58,237,0.06);
+  }
+  .upload-zone .icon { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
+  .upload-zone p { color: var(--muted); font-size: 0.9rem; }
+  .upload-zone strong { color: var(--text); }
+  #fileInput { display: none; }
+
+  /* Status */
+  .status-bar {
+    max-width: 520px;
+    width: 100%;
+    margin-bottom: 1.5rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.85rem 1.2rem;
+    display: none;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    position: relative;
+    z-index: 1;
+  }
+  .status-bar.visible { display: flex; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--win); flex-shrink: 0; }
+  .status-bar span { color: var(--muted); margin-left: auto; font-family: 'Space Mono', monospace; font-size: 0.8rem; }
+
+  /* Machine */
+  .machine {
+    width: 100%;
+    max-width: 520px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .slot-window {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 1.25rem;
+    transition: border-color 0.3s;
+  }
+  .slot-window.won { border-color: var(--gold); box-shadow: 0 0 32px rgba(245,158,11,0.2); }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 180px;
+  }
+
+  /* Highlight bar rendered on top of canvas */
+  .highlight-bar {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 60px;
+    border-top: 1px solid rgba(124,58,237,0.35);
+    border-bottom: 1px solid rgba(124,58,237,0.35);
+    background: rgba(124,58,237,0.07);
+    pointer-events: none;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .slot-window.won .highlight-bar {
+    border-color: rgba(245,158,11,0.6);
+    background: rgba(245,158,11,0.08);
+  }
+
+  /* Gradient masks */
+  .mask-top, .mask-bot {
+    position: absolute;
+    left: 0; right: 0;
+    height: 56px;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .mask-top { top: 0; background: linear-gradient(to bottom, var(--card), transparent); }
+  .mask-bot { bottom: 0; background: linear-gradient(to top, var(--card), transparent); }
+
+  /* Particle canvas */
+  #particleCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Controls */
+  .controls { display: flex; gap: 1rem; }
+
+  .btn {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s, opacity 0.2s;
+    letter-spacing: 0.01em;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-pick {
+    background: linear-gradient(135deg, var(--accent) 0%, #5b21b6 100%);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(124,58,237,0.35);
+  }
+  .btn-pick:hover:not(:disabled) { box-shadow: 0 6px 32px rgba(124,58,237,0.55); }
+
+  .btn-reset {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    flex: 0 0 auto;
+    padding: 1rem 1.2rem;
+    font-size: 1.1rem;
+  }
+  .btn-reset:hover:not(:disabled) { border-color: var(--accent2); color: var(--accent2); }
+
+  /* History */
+  .history-section {
+    max-width: 520px;
+    width: 100%;
+    margin-top: 2rem;
+    position: relative;
+    z-index: 1;
+    display: none;
+  }
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+  .history-label {
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .clear-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    transition: color 0.15s;
+  }
+  .clear-btn:hover { color: var(--text); }
+  .history-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .history-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    animation: chipIn 0.2s ease;
+  }
+  @keyframes chipIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  @media (max-width: 480px) {
+    .controls { flex-direction: column; }
+    .btn-reset { flex: 1; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Random <span>Name</span> Picker</h1>
+<p class="subtitle">Upload a CSV, hit Pick — done.</p>
+
+<div class="upload-zone" id="uploadZone">
+  <span class="icon">📋</span>
+  <strong>Drop your CSV here</strong>
+  <p>or click to browse · one name per row, or comma-separated</p>
+  <input type="file" id="fileInput" accept=".csv,.txt">
+</div>
+
+<div class="status-bar" id="statusBar">
+  <div class="status-dot"></div>
+  <strong id="statusFile">names.csv</strong>&nbsp;loaded
+  <span id="statusCount">0 names</span>
+</div>
+
+<div class="machine" id="machine" style="display:none">
+  <div class="slot-window" id="slotWindow">
+    <canvas id="reelCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
+    <div class="highlight-bar"></div>
+    <div class="mask-top"></div>
+    <div class="mask-bot"></div>
+  </div>
+  <div class="controls">
+    <button class="btn btn-pick" id="pickBtn">Pick a Name</button>
+    <button class="btn btn-reset" id="resetBtn" title="Reshuffle all names">↺</button>
+  </div>
+</div>
+
+<div class="history-section" id="historySection">
+  <div class="history-header">
+    <span class="history-label">Already picked</span>
+    <button class="clear-btn" id="clearBtn">Clear</button>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let names = [];
+let remaining = [];
+let spinning = false;
+
+// ─── Elements ─────────────────────────────────────────────────────────────────
+const uploadZone   = document.getElementById('uploadZone');
+const fileInput    = document.getElementById('fileInput');
+const statusBar    = document.getElementById('statusBar');
+const statusFile   = document.getElementById('statusFile');
+const statusCount  = document.getElementById('statusCount');
+const machine      = document.getElementById('machine');
+const slotWindow   = document.getElementById('slotWindow');
+const reelCanvas   = document.getElementById('reelCanvas');
+const pCanvas      = document.getElementById('particleCanvas');
+const pickBtn      = document.getElementById('pickBtn');
+const resetBtn     = document.getElementById('resetBtn');
+const historySection = document.getElementById('historySection');
+const historyList  = document.getElementById('historyList');
+const clearBtn     = document.getElementById('clearBtn');
+
+// ─── Canvas setup ─────────────────────────────────────────────────────────────
+const DPR = window.devicePixelRatio || 1;
+const CANVAS_H = 180; // CSS px
+const ITEM_H   = 60;  // px per reel row
+let canvasW = 520;    // updated on resize
+
+function resizeCanvases() {
+  const w = slotWindow.offsetWidth;
+  canvasW = w;
+  for (const c of [reelCanvas, pCanvas]) {
+    c.width  = w * DPR;
+    c.height = CANVAS_H * DPR;
+    c.style.height = CANVAS_H + 'px';
+  }
+}
+window.addEventListener('resize', () => { resizeCanvases(); if (!spinning) drawIdle(); });
+
+// ─── Reel drawing ─────────────────────────────────────────────────────────────
+const ctx = reelCanvas.getContext('2d');
+
+// scrollY = the Y pixel offset of the reel tape (increases as it scrolls down)
+// We draw names at positions: name[i] is centred at y = i*ITEM_H - scrollY + CANVAS_H/2
+// So scrollY=0 → name[0] is centred. scrollY=ITEM_H → name[1] is centred.
+let scrollY = 0;
+
+// The "tape" for one spin: an array of name strings
+let tape = [];
+
+function drawReel(sy) {
+  ctx.clearRect(0, 0, reelCanvas.width, reelCanvas.height);
+
+  const cx = reelCanvas.width / 2;
+  const midY = (CANVAS_H / 2) * DPR;
+
+  ctx.save();
+  ctx.scale(DPR, DPR);
+
+  // How many items to draw
+  const visibleRange = Math.ceil(CANVAS_H / ITEM_H) + 2;
+  const firstIdx = Math.floor(sy / ITEM_H) - 1;
+
+  for (let i = firstIdx; i < firstIdx + visibleRange + 2; i++) {
+    if (i < 0 || i >= tape.length) continue;
+    const itemCentreY = (i * ITEM_H) - sy + CANVAS_H / 2;
+    const distFromCentre = Math.abs(itemCentreY - CANVAS_H / 2);
+    const isCenter = distFromCentre < ITEM_H / 2;
+
+    // Fade by distance
+    const alpha = Math.max(0, 1 - distFromCentre / (CANVAS_H * 0.55));
+
+    const fontSize = isCenter ? 22 : 17;
+    ctx.font = `${isCenter ? 700 : 400} ${fontSize}px 'Space Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isCenter
+      ? `rgba(232,232,240,${alpha})`
+      : `rgba(107,107,138,${alpha * 0.8})`;
+
+    // Clip name if needed
+    let label = tape[i];
+    // Simple truncation via measureText
+    const maxW = canvasW - 48;
+    while (ctx.measureText(label).width > maxW && label.length > 4) {
+      label = label.slice(0, -2) + '…';
+    }
+
+    ctx.fillText(label, canvasW / 2, itemCentreY);
+  }
+
+  ctx.restore();
+}
+
+function drawIdle() {
+  if (!names.length) return;
+  // Show 3 random names centred
+  tape = [
+    randFrom(names),
+    randFrom(names),
+    randFrom(names)
+  ];
+  scrollY = ITEM_H; // tape[1] centred
+  drawReel(scrollY);
+}
+
+// ─── Spin animation ───────────────────────────────────────────────────────────
+function doSpin() {
+  if (spinning || remaining.length === 0) return;
+  spinning = true;
+  pickBtn.disabled = true;
+  slotWindow.classList.remove('won');
+
+  const winner = popRandom(remaining);
+  statusCount.textContent = `${remaining.length} remaining`;
+
+  // Build tape: N decoys, then winner in the middle
+  const DECOYS = 35;
+  tape = [];
+  for (let i = 0; i < DECOYS; i++) tape.push(randFrom(names));
+  // winner at index DECOYS+1, with a buffer item either side
+  tape.push(randFrom(names));  // DECOYS
+  tape.push(winner);           // DECOYS+1  ← lands here
+  tape.push(randFrom(names));  // DECOYS+2
+
+  const winnerIdx  = DECOYS + 1;
+  const startScroll = 0;
+  // scrollY such that tape[winnerIdx] is centred = winnerIdx * ITEM_H
+  const endScroll  = winnerIdx * ITEM_H;
+  const totalDist  = endScroll - startScroll;
+
+  scrollY = startScroll;
+  drawReel(scrollY);
+
+  // Duration & easing
+  const DURATION = 2400; // ms
+  let startTime = null;
+
+  // Ease: fast start, dramatic slow-down at end (slot machine feel)
+  function easeOutExpo(t) {
+    return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+  }
+
+  function animate(ts) {
+    if (!startTime) startTime = ts;
+    const elapsed = ts - startTime;
+    const t = Math.min(elapsed / DURATION, 1);
+    const eased = easeOutExpo(t);
+
+    scrollY = startScroll + totalDist * eased;
+    drawReel(scrollY);
+
+    if (t < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      scrollY = endScroll;
+      drawReel(scrollY);
+      onWin(winner);
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function onWin(winner) {
+  // Redraw winner with gold colour
+  ctx.save();
+  ctx.scale(DPR, DPR);
+  const midY = CANVAS_H / 2;
+  ctx.font = "700 24px 'Space Mono', monospace";
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f59e0b';
+  let label = winner;
+  const maxW = canvasW - 48;
+  while (ctx.measureText(label).width > maxW && label.length > 4) {
+    label = label.slice(0, -2) + '…';
+  }
+  // Clear centre strip first
+  ctx.clearRect(0, midY - ITEM_H/2, canvasW, ITEM_H);
+  ctx.fillText(label, canvasW / 2, midY);
+  ctx.restore();
+
+  slotWindow.classList.add('won');
+  fireBurst();
+  addToHistory(winner);
+  spinning = false;
+
+  if (remaining.length === 0) {
+    pickBtn.textContent = 'All done! ↺';
+    pickBtn.disabled = false;
+    pickBtn.onclick = resetAll;
+  } else {
+    pickBtn.disabled = false;
+  }
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+const pCtx = pCanvas.getContext('2d');
+let particles = [];
+
+function fireBurst() {
+  particles = [];
+  const cx = canvasW / 2;
+  const cy = CANVAS_H / 2;
+  const COLOURS = ['#7c3aed','#06b6d4','#f59e0b','#10b981','#f472b6','#e8e8f0'];
+  for (let i = 0; i < 26; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 3.5;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1,
+      r: 3 + Math.random() * 3,
+      colour: COLOURS[i % COLOURS.length],
+      life: 1,
+      decay: 0.018 + Math.random() * 0.014
+    });
+  }
+  animateParticles();
+}
+
+function animateParticles() {
+  pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+  pCtx.save();
+  pCtx.scale(DPR, DPR);
+
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.vy += 0.12; // gravity
+    p.life -= p.decay;
+    pCtx.globalAlpha = Math.max(0, p.life);
+    pCtx.fillStyle = p.colour;
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    pCtx.fill();
+  }
+
+  pCtx.restore();
+  if (particles.length > 0) requestAnimationFrame(animateParticles);
+  else pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+}
+
+// ─── Upload & CSV ─────────────────────────────────────────────────────────────
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) readFile(fileInput.files[0]); });
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => parseCSV(e.target.result, file.name);
+  reader.readAsText(file);
+}
+
+function parseCSV(text, filename) {
+  const raw = text.split(/[\r\n]+/).flatMap(line => line.split(/[,;]/));
+  const parsed = raw
+    .map(s => s.trim().replace(/^["']|["']$/g, ''))
+    .filter(s => s.length > 0 && s.length < 100);
+
+  if (!parsed.length) {
+    alert('No names found. Make sure your CSV has names in the first column, or one per line.');
+    return;
+  }
+
+  names = parsed;
+  remaining = shuffle([...names]);
+
+  statusFile.textContent = filename;
+  statusCount.textContent = `${names.length} names`;
+  statusBar.classList.add('visible');
+  uploadZone.style.display = 'none';
+  machine.style.display = 'block';
+
+  resizeCanvases();
+  drawIdle();
+
+  historyList.innerHTML = '';
+  historySection.style.display = 'none';
+  slotWindow.classList.remove('won');
+  pickBtn.textContent = 'Pick a Name';
+  pickBtn.disabled = false;
+  pickBtn.onclick = null; // clear any "all done" override
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+pickBtn.addEventListener('click', () => {
+  if (pickBtn.onclick) return; // handled separately when "all done"
+  doSpin();
+});
+
+resetBtn.addEventListener('click', resetAll);
+clearBtn.addEventListener('click', () => {
+  historyList.innerHTML = '';
+  historySection.style.display = 'none';
+});
+
+function resetAll() {
+  if (spinning) return;
+  remaining = shuffle([...names]);
+  historyList.innerHTML = '';
+  historySection.style.display = 'none';
+  slotWindow.classList.remove('won');
+  drawIdle();
+  pickBtn.textContent = 'Pick a Name';
+  pickBtn.disabled = false;
+  pickBtn.onclick = null;
+  statusCount.textContent = `${names.length} names`;
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+function addToHistory(name) {
+  historySection.style.display = 'block';
+  const chip = document.createElement('div');
+  chip.className = 'history-chip';
+  chip.textContent = name;
+  historyList.prepend(chip);
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function randFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function popRandom(arr) {
+  const i = Math.floor(Math.random() * arr.length);
+  return arr.splice(i, 1)[0];
+}
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+</script>
+</body>
+</html>
